@@ -24,24 +24,27 @@
     ### String Form Representation ###
     ##################################
 
-    .--- 0th Index            LERF Representation           63rd Index ---.
-    v                                                                     v
     00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
     ^                                                                     ^
     `--- 63rd Index         Standard Representation          0th Index ---`
 */
-
 
 pub struct Bitboard(pub u64);
 
 impl std::fmt::Display for Bitboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut str = String::new();
-        for i in 1..=64 { 
-            str.push_str(&format!("{}  ", self.test(i - 1) as i32)); 
-            if i % 8 == 0 {
+
+        let mut idx: u8 = 56;
+
+        for i in 1..=64 {
+            str.push_str(&format!("{}  ", self.test(idx) as i32)); 
+            if i % 8 == 0 && idx != 7 {
+                idx -= 15;
                 str.push('\n');
-            }
+            } else {
+                idx += 1;
+            } 
         }
         write!(f, "{str}")
     }
@@ -49,6 +52,6 @@ impl std::fmt::Display for Bitboard {
 
 impl Bitboard {
     pub fn test(&self, idx: u8) -> bool {
-        self.0 & (1 << 63 - idx) != 0
+        self.0 & (1 << idx) != 0
     } 
 }
