@@ -92,6 +92,17 @@ impl Bitboard {
     pub const ANTI_DIAGONAL_MASK: Self = Self(0x0102040810204080);
     pub const LIGHT_SQUARES_MASK: Self = Self(0x55AA55AA55AA55AA);
     pub const DARK_SQUARES_MASK:  Self = Self(0xAA55AA55AA55AA55);
+
+    const WRAP_MASK: [Self; 8] = [
+        Self(0xFEFEFEFEFEFEFE00), // North East
+        Self(0xFEFEFEFEFEFEFEFE), // East
+        Self(0x00FEFEFEFEFEFEFE), // South East
+        Self(0x00FFFFFFFFFFFFFF), // South
+        Self(0x007F7F7F7F7F7F7F), // South West
+        Self(0x7F7F7F7F7F7F7F7F), // West
+        Self(0x7F7F7F7F7F7F7F00), // North West
+        Self(0xFFFFFFFFFFFFFF00)  // North
+    ];
     
     pub fn new(bits: u64) -> Self {
         Self(bits)
@@ -212,7 +223,7 @@ impl Bitboard {
     pub fn fill_west(generators: Self, propagators: Self) -> Self {
         let mut generators = generators;
         let mut accumulator = Self::empty();
-        let propagators = propagators & !Bitboard::FILE_A_MASK;
+        let propagators = propagators & !Bitboard::FILE_H_MASK;
         let dir: u8 = Direction::West.into();
 
         generators = generators >> dir & propagators;
@@ -231,6 +242,146 @@ impl Bitboard {
         accumulator |= generators;
 
         accumulator
+    }
+
+    pub fn fill_north_east(generators: Self, propagators: Self) -> Self {
+        let mut generators = generators;
+        let mut accumulator = Self::empty();
+        let propagators = propagators & !Bitboard::FILE_A_MASK;
+        let dir: u8 = Direction::NorthEast.into();
+
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+        generators = generators << dir & propagators;
+        accumulator |= generators;
+
+        accumulator
+    }
+
+    pub fn flip_vertical(&self) -> Self {
+        (*self << 56) | 
+        (*self << 40) & Bitboard::RANK_7_MASK | 
+        (*self << 24) & Bitboard::RANK_6_MASK | 
+        (*self << 8)  & Bitboard::RANK_5_MASK | 
+        (*self >> 8)  & Bitboard::RANK_4_MASK | 
+        (*self >> 24) & Bitboard::RANK_3_MASK | 
+        (*self >> 40) & Bitboard::RANK_2_MASK | 
+        (*self >> 56)
+    }
+
+
+    /*
+        delta_swap_1:                delta_swap_2:                delta_swap_3:
+        + ====================== +   + ====================== +   + ====================== +
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  1  1  .  .  . |   | 1  1  1  1  .  .  .  . |
+        + ====================== +   + ====================== +   + ====================== +
+    */
+
+    pub fn flip_horizontal(&self) -> Self {
+        let delta_swap_1 = Self::new(0x5555555555555555);
+        let delta_swap_2 = Self::new(0x3333333333333333);
+        let delta_swap_3 = Self::new(0x0f0f0f0f0f0f0f0f);
+
+        let mut accumulator = self.clone();
+
+        accumulator = ((accumulator >> 1) & delta_swap_1) | ((accumulator & delta_swap_1) << 1);
+        accumulator = ((accumulator >> 2) & delta_swap_2) | ((accumulator & delta_swap_2) << 2);
+        accumulator = ((accumulator >> 4) & delta_swap_3) | ((accumulator & delta_swap_3) << 4);
+
+        accumulator
+    }
+
+    /*
+        delta_swap_1                 delta_swap_2                 delta_swap_3
+        + ====================== +   + ====================== +   + ====================== +
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  .  1  1  .  . |   | 1  1  1  1  .  .  .  . |
+        | .  .  .  .  .  .  .  . |   | 1  1  .  .  1  1  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | .  .  .  .  .  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |   | 1  1  1  1  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | 1  1  .  .  1  1  .  . |   | .  .  .  .  .  .  .  . |
+        | .  .  .  .  .  .  .  . |   | 1  1  .  .  1  1  .  . |   | .  .  .  .  .  .  .  . |
+        | 1  .  1  .  1  .  1  . |   | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |
+        | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |
+        + ====================== +   + ====================== +   + ====================== +
+    */
+
+    pub fn flip_main_diagonal(&self) -> Self {
+        let mut tmp;
+        let mut accumulator = self.clone();
+
+        let delta_swap_1 = Bitboard::new(0x5500550055005500);
+        let delta_swap_2 = Bitboard::new(0x3333000033330000);
+        let delta_swap_3 = Bitboard::new(0x0f0f0f0f00000000);
+
+        tmp = delta_swap_3 & (accumulator ^ (accumulator << 28));
+        accumulator ^= tmp ^ (tmp >> 28);
+        tmp = delta_swap_2 & (accumulator ^ (accumulator << 14));
+        accumulator ^= tmp ^ (tmp >> 14);   
+        tmp = delta_swap_1 & (accumulator ^ (accumulator << 7));
+        accumulator ^= tmp ^ (tmp >> 7);
+
+        accumulator
+    }
+
+     /*
+    delta_swap_1                 delta_swap_2                 delta_swap_3
+    + ====================== +   + ====================== +   + ====================== +
+    | .  1  .  1  .  1  .  1 |   | .  .  1  1  .  .  1  1 |   | .  .  .  .  1  1  1  1 |
+    | .  .  .  .  .  .  .  . |   | .  .  1  1  .  .  1  1 |   | .  .  .  .  1  1  1  1 |
+    | .  1  .  1  .  1  .  1 |   | .  .  .  .  .  .  .  . |   | .  .  .  .  1  1  1  1 |
+    | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |   | .  .  .  .  1  1  1  1 |
+    | .  1  .  1  .  1  .  1 |   | .  .  1  1  .  .  1  1 |   | .  .  .  .  .  .  .  . |
+    | .  .  .  .  .  .  .  . |   | .  .  1  1  .  .  1  1 |   | .  .  .  .  .  .  .  . |
+    | .  1  .  1  .  1  .  1 |   | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |
+    | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |   | .  .  .  .  .  .  .  . |
+    + ====================== +   + ====================== +   + ====================== +
+    */
+
+    pub fn flip_anti_diagonal(&self) -> Self {
+        let mut tmp;
+        let mut accumulator = self.clone();
+
+        let delta_swap_1 = Bitboard::new(0xaa00aa00aa00aa00);
+        let delta_swap_2 = Bitboard::new(0xcccc0000cccc0000);
+        let delta_swap_4 = Bitboard::new(0xf0f0f0f00f0f0f0f);
+
+        tmp = accumulator ^ (accumulator << 36);
+        accumulator ^= delta_swap_4 & (tmp ^ (accumulator >> 36));
+        tmp = delta_swap_2 & (accumulator ^ (accumulator << 18));
+        accumulator ^= tmp ^ (tmp >> 18);
+        tmp = delta_swap_1 & (accumulator ^ (accumulator << 9));
+        accumulator ^= tmp ^ (tmp >> 9);
+
+        accumulator
+    }
+
+    pub fn rotate180(&self) -> Self {
+        self.flip_horizontal().flip_vertical()
+    }
+
+    pub fn rotate90cw(&self) -> Self {
+        self.flip_vertical().flip_anti_diagonal()
+    }
+
+    pub fn rotate90ccw(&self) -> Self {
+        self.flip_vertical().flip_main_diagonal()
     }
 }
 
