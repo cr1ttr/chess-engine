@@ -1,26 +1,38 @@
+use std::ops::Index;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
-    NorthWest = 7,
-    North = 8,
-    NorthEast = 9, 
-    West = -1, 
-    East = 1,
-    SouthWest = -9,
-    South = -8, 
-    SouthEast = -7
+    NorthEast,
+    East,
+    SouthEast,
+    South,
+    SouthWest,
+    West,
+    NorthWest,
+    North
 }
 
-impl Into<u8> for Direction {
-    fn into(self) -> u8 {
-        (self as i8).abs() as u8
-    }
+pub const ORTHOGONALS: [Direction; 4] = [
+    Direction::North,
+    Direction::East,
+    Direction::South,
+    Direction::West
+];
+
+pub const DIAGONALS: [Direction; 4] = [
+    Direction::SouthEast,
+    Direction::SouthWest,
+    Direction::NorthEast,
+    Direction::NorthWest
+];
+
+impl Into<usize> for Direction {
+    fn into(self) -> usize {
+        self as usize
+    }    
 }
 
-impl Into<i8> for Direction {
-    fn into(self) -> i8 {
-        self as i8
-    }
-}
-
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Square {
     A1, B1, C1, D1, E1, F1, G1, H1,
     A2, B2, C2, D2, E2, F2, G2, H2,
