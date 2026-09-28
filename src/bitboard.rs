@@ -29,9 +29,9 @@
     `--- 63rd Index         Standard Representation          0th Index ---`
 */
 
-use std::ops::{Not, Shl, ShlAssign, Shr, ShrAssign};
+use std::{ops::{Not, Shl, ShlAssign, Shr, ShrAssign}, write};
 
-use crate::{Square, position::Direction};
+use crate::{DIAGONALS, ORTHOGONALS, Square, position::Direction};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Bitboard(u64);
@@ -93,7 +93,7 @@ impl Bitboard {
     pub const LIGHT_SQUARES_MASK: Self = Self(0x55AA55AA55AA55AA);
     pub const DARK_SQUARES_MASK:  Self = Self(0xAA55AA55AA55AA55);
 
-    const WRAP_MASK: [Self; 8] = [
+    pub const ANTI_WRAP_MASK: [Self; 8] = [
         Self(0xFEFEFEFEFEFEFE00), // North East
         Self(0xFEFEFEFEFEFEFEFE), // East
         Self(0x00FEFEFEFEFEFEFE), // South East
@@ -103,7 +103,9 @@ impl Bitboard {
         Self(0x7F7F7F7F7F7F7F00), // North West
         Self(0xFFFFFFFFFFFFFF00)  // North
     ];
-    
+
+    pub const SHIFT_DIR: [i32; 8] = [9, 1, -7, -8, -9, -1, 7, 8];
+
     pub fn new(bits: u64) -> Self {
         Self(bits)
     }
@@ -148,124 +150,83 @@ impl Bitboard {
         Self(self.0 ^ 1 << idx.into())
     }
 
-    pub fn fill_south(generators: Self, propagators: Self) -> Self {
-        let mut generators = generators;
-        let mut accumulator = Self::empty();
+    pub fn fill_dir(generators: Self, propagators: Self, dir: impl Into<usize>) -> Self {
+        let mut copy: Self = generators.clone();
+        let mut generators: Self = generators;
+        let mut accumulator: Self = generators;
+        let dir: usize = dir.into(); 
+        let shift_dir: i32 = Self::SHIFT_DIR[dir];
+        let propagators = propagators & Self::ANTI_WRAP_MASK[dir];
 
-        let dir: u8 = Direction::South.into();
+        generators = generators.rotate(shift_dir) & propagators;
+        accumulator |= generators;
+        generators = generators.rotate(shift_dir) & propagators;
+        accumulator |= generators;
+        generators = generators.rotate(shift_dir) & propagators;
+        accumulator |= generators;
+        generators = generators.rotate(shift_dir) & propagators;
+        accumulator |= generators;
+        generators = generators.rotate(shift_dir) & propagators;
+        accumulator |= generators;
+        accumulator |= generators.rotate(shift_dir) & propagators;
 
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
+        accumulator.rotate(shift_dir) & Self::ANTI_WRAP_MASK[dir] | copy
+    }
+
+    pub fn fill_orthogonal(generators: Self, propagators: Self) -> Self {
+        let mut accumulator: Self = Self::empty();
+
+        accumulator |= Self::fill_dir(generators, propagators, ORTHOGONALS[0]);
+        accumulator |= Self::fill_dir(generators, propagators, ORTHOGONALS[1]);
+        accumulator |= Self::fill_dir(generators, propagators, ORTHOGONALS[2]);
+        accumulator |= Self::fill_dir(generators, propagators, ORTHOGONALS[3]);
 
         accumulator
     }
 
-    pub fn fill_north(generators: Self, propagators: Self) -> Self {
-        let mut generators = generators;
-        let mut accumulator = Self::empty();
+    pub fn fill_diagonal(generators: Self, propagators: Self) -> Self {
+        let mut accumulator: Self = Self::empty();
 
-        let dir: u8 = Direction::North.into();
-
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
+        accumulator |= Self::fill_dir(generators, propagators, DIAGONALS[0]);
+        accumulator |= Self::fill_dir(generators, propagators, DIAGONALS[1]);
+        accumulator |= Self::fill_dir(generators, propagators, DIAGONALS[2]);
+        accumulator |= Self::fill_dir(generators, propagators, DIAGONALS[3]);
 
         accumulator
     }
 
-    pub fn fill_east(generators: Self, propagators: Self) -> Self {
-        let mut generators = generators;
-        let mut accumulator = Self::empty();
-        let propagators = propagators & !Bitboard::FILE_A_MASK;
-        let dir: u8 = Direction::East.into();
+    pub fn step_dir(generators: Self, dir: impl Into<usize>) -> Self {
 
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
+        let dir: usize = dir.into();
+        let shift_dir: i32 = Self::SHIFT_DIR[dir];
+
+        generators.rotate(shift_dir) & Self::ANTI_WRAP_MASK[dir]
+    }
+
+    pub fn fill_orthodiagonal(generators: Self, propagators: Self) -> Self {
+        let mut accumulator: Self = Self::empty();
+
+        accumulator |= Self::fill_diagonal(generators, propagators);
+        accumulator |= Self::fill_orthogonal(generators, propagators);
 
         accumulator
     }
 
-    pub fn fill_west(generators: Self, propagators: Self) -> Self {
-        let mut generators = generators;
-        let mut accumulator = Self::empty();
-        let propagators = propagators & !Bitboard::FILE_H_MASK;
-        let dir: u8 = Direction::West.into();
-
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-        generators = generators >> dir & propagators;
-        accumulator |= generators;
-
-        accumulator
+    pub fn rotate(&self, n: i32) -> Self {
+        if n > 0 {
+            self.rotate_left(n.abs() as u32)
+        } else {
+            self.rotate_right(n.abs() as u32)
+        }
     }
 
-    pub fn fill_north_east(generators: Self, propagators: Self) -> Self {
-        let mut generators = generators;
-        let mut accumulator = Self::empty();
-        let propagators = propagators & !Bitboard::FILE_A_MASK;
-        let dir: u8 = Direction::NorthEast.into();
 
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
-        generators = generators << dir & propagators;
-        accumulator |= generators;
+    pub fn rotate_left(&self, n: u32) -> Self {
+        Bitboard(self.0.rotate_left(n))
+    }
 
-        accumulator
+    pub fn rotate_right(&self, n: u32) -> Self {
+        Bitboard(self.0.rotate_right(n))
     }
 
     pub fn flip_vertical(&self) -> Self {
